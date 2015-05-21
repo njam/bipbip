@@ -1,4 +1,4 @@
-require 'rb-inotify'
+require 'inotify'
 
 module Bipbip
 
@@ -11,22 +11,7 @@ module Bipbip
     end
 
     def monitor
-      begin
-        io = IO.select([notifier.to_io], [], [], 0)
-      rescue Errno::EBADF => e
-        log(Logger::WARN, "Selecting from inotify IO gives EBADF, resetting notifier")
-        reset_notifier
-      end
-
-      unless io.nil?
-        n = notifier
-        begin
-          n.process
-        rescue NoMethodError => e
-          # Ignore errors from closed notifier - see https://github.com/nex3/rb-inotify/issues/41
-          raise e unless n.watchers.empty?
-        end
-      end
+      notifier
 
       lines = @lines.entries
       @lines.clear
@@ -41,41 +26,55 @@ module Bipbip
       ]
     end
 
+    def cleanup
+      reset_notifier
+    end
+
     private
 
     def notifier
       if @notifier.nil?
-        @notifier = create_notifier
+        file_stat = File.stat(config['path'])
+        raise "Cannot read file `#{config['path']}`" unless file_stat.readable?
+        @size = file_stat.size
         @lines = []
-        @size = File.stat(config['path']).size
+        @notifier = create_notifier
       end
       @notifier
     end
 
     def create_notifier
       # Including the "attrib" event, because on some systems "unlink" triggers "attrib", but then the inode's deletion doesn't trigger "delete_self"
-      events = [:modify, :delete_self, :move_self, :unmount, :attrib]
-      notifier = INotify::Notifier.new
-      notifier.watch(config['path'], *events) do |event|
-        if event.flags.include?(:modify)
-          roll_file
-        else
-          log(Logger::WARN, "File event `#{event.flags.join(',')}` detected, resetting notifier")
-          reset_notifier
+      events = Inotify::MODIFY | Inotify::DELETE_SELF | Inotify::MOVE_SELF | Inotify::UNMOUNT | Inotify::ATTRIB
+      notifier = Inotify.new
+      notifier.add_watch(config['path'], events)
+
+      @notifier_thread = Thread.new do
+        notifier.each_event do |event|
+          if event.mask == Inotify::MODIFY
+            roll_file
+          else
+            log(Logger::WARN, "File event `#{event.mask}` detected, resetting notifier")
+            reset_notifier
+          end
         end
       end
+
       notifier
     end
 
     def reset_notifier
       unless @notifier.nil?
-        @notifier.stop
         begin
           @notifier.close
         rescue SystemCallError => e
           log(Logger::WARN, "Cannot close notifier: `#{e.message}`")
         end
         @notifier = nil
+      end
+
+      unless @notifier_thread.nil?
+        @notifier_thread.exit
       end
     end
 
