@@ -67,9 +67,6 @@ describe Bipbip::Plugin::LogParser do
     file.close
     File.unlink(path)
 
-    sleep 0.01
-    expect {plugin.monitor}.to raise_error(Errno::ENOENT)
-
     File.open(path, 'w') do |f|
       f.write('')
     end
@@ -91,9 +88,6 @@ describe Bipbip::Plugin::LogParser do
     path = file.path
     path_new = Tempfile.new('bipbip-logparser-spec').path
     File.rename(path, path_new)
-
-    sleep 0.01
-    expect {plugin.monitor}.to raise_error(Errno::ENOENT)
 
     File.open(path, 'w') do |f|
       f.write('')
