@@ -50,6 +50,7 @@ module Bipbip
         thread = ThreadsWait.new(@threads).next_wait
         @threads.delete(thread)
         plugin = thread['plugin']
+        plugin.cleanup
         next if @interrupted
 
         Bipbip.logger.error "Plugin #{plugin.name} with config #{plugin.config} terminated. Restarting..."

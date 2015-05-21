@@ -96,4 +96,22 @@ describe Bipbip::Agent do
     agent.interrupt
   end
 
+  it 'should call plugin.cleanup on exception' do
+    Bipbip::Plugin.any_instance.stub(:metrics_schema) { [] }
+    Bipbip::Plugin.any_instance.stub(:source_identifier) { 'my-source' }
+    Bipbip::Plugin.any_instance.stub(:monitor) { raise Exception.new('my-exception') }
+    plugin = Bipbip::Plugin.new('my-plugin', {}, 0.1)
+    plugin.should_receive(:cleanup).exactly(:once)
+
+    agent = Bipbip::Agent.new(Bipbip::Config.new([plugin], [], logger))
+    agent.stub(:interruptible_sleep) {}
+
+    thread = Thread.new { agent.run }
+    sleep 0.3
+
+    thread.alive?.should eq(true)
+    thread.exit
+    agent.interrupt
+  end
+
 end

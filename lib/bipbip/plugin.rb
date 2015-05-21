@@ -56,6 +56,10 @@ module Bipbip
       end
     end
 
+    # Executed after a plugin crashed/raised
+    def cleanup
+    end
+
     def frequency
       @frequency
     end
